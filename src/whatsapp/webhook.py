@@ -49,27 +49,36 @@ async def receber_mensagem(request: Request, db: Session = Depends(get_db)):
         remetente = "lead"
         nome_lead = msg.nome_contato
 
-    # Buscar vendedores ativos
-    vendedores = db.query(Vendedor).filter_by(ativo=True).all()
-    if not vendedores:
-        logger.warning("Nenhum vendedor cadastrado. Mensagem ignorada.")
-        return {"status": "ignorado", "motivo": "nenhum vendedor cadastrado"}
-
-    # Procurar vendedor que ja tem conversa com esse lead
+    # Identificar o vendedor
     vendedor = None
-    if not msg.enviada_por_mim:
-        for v in vendedores:
-            conversa_existente = (
-                db.query(Conversa)
-                .filter_by(vendedor_id=v.id, lead_telefone=lead_telefone)
-                .first()
-            )
-            if conversa_existente:
-                vendedor = v
-                break
+
+    # 1. Buscar pelo telefone da instancia (match exato ou parcial)
+    instance_phone = msg.instance_phone
+    if instance_phone:
+        vendedor = (
+            db.query(Vendedor)
+            .filter(Vendedor.ativo.is_(True), Vendedor.telefone.contains(instance_phone))
+            .first()
+        )
+
+    # 2. Buscar por conversa existente com esse lead
+    if vendedor is None and not msg.enviada_por_mim:
+        conversa_existente = (
+            db.query(Conversa)
+            .join(Vendedor)
+            .filter(Conversa.lead_telefone == lead_telefone, Vendedor.ativo.is_(True))
+            .first()
+        )
+        if conversa_existente:
+            vendedor = db.query(Vendedor).get(conversa_existente.vendedor_id)
+
+    # 3. Fallback: primeiro vendedor ativo
+    if vendedor is None:
+        vendedor = db.query(Vendedor).filter_by(ativo=True).first()
 
     if vendedor is None:
-        vendedor = vendedores[0]
+        logger.warning("Nenhum vendedor cadastrado. Mensagem ignorada.")
+        return {"status": "ignorado", "motivo": "nenhum vendedor cadastrado"}
 
     # Buscar ou criar conversa e salvar mensagem
     conversa = buscar_ou_criar_conversa(db, vendedor.id, lead_telefone, nome_lead)

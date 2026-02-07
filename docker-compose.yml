@@ -8,6 +8,9 @@ services:
       - "8501:8501"
     env_file:
       - .env
+    environment:
+      - EVOLUTION_API_URL=http://evolution-api:8080
+      - WEBHOOK_URL=http://agente-comercial:8000/webhook/messages
     volumes:
       - ./data:/app/data
     networks:

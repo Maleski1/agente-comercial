@@ -17,6 +17,7 @@ class MensagemParseada:
     timestamp: datetime
     message_id: str
     instance_name: str
+    instance_phone: str  # telefone do dono da instancia
 
 
 def parsear_webhook(payload: dict) -> MensagemParseada | None:
@@ -58,6 +59,10 @@ def parsear_webhook(payload: dict) -> MensagemParseada | None:
     # Se fromMe=False, o lead enviou (remetente = remoto, destinatario = instancia)
     instance_name = payload.get("instance", "")
 
+    # Extrair telefone do dono da instancia (campo sender do payload)
+    sender = payload.get("sender", "")
+    instance_phone = sender.replace("@s.whatsapp.net", "") if sender else ""
+
     return MensagemParseada(
         telefone_remetente=telefone_remoto if not enviada_por_mim else "",
         telefone_destinatario=telefone_remoto if enviada_por_mim else "",
@@ -68,6 +73,7 @@ def parsear_webhook(payload: dict) -> MensagemParseada | None:
         timestamp=timestamp,
         message_id=key.get("id", ""),
         instance_name=instance_name,
+        instance_phone=instance_phone,
     )
 
 

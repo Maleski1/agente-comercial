@@ -3,7 +3,7 @@
 import logging
 
 from fastapi import Depends, FastAPI
-
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.database.connection import SessionLocal, criar_tabelas
@@ -71,6 +71,11 @@ async def health():
     return {"status": "ok"}
 
 
+class VendedorCreate(BaseModel):
+    nome: str
+    telefone: str
+
+
 @app.get("/vendedores")
 async def listar_vendedores(db: Session = Depends(get_db)):
     vendedores = db.query(Vendedor).all()
@@ -78,6 +83,18 @@ async def listar_vendedores(db: Session = Depends(get_db)):
         {"id": v.id, "nome": v.nome, "telefone": v.telefone, "ativo": v.ativo}
         for v in vendedores
     ]
+
+
+@app.post("/vendedores", status_code=201)
+async def criar_vendedor(data: VendedorCreate, db: Session = Depends(get_db)):
+    existente = db.query(Vendedor).filter(Vendedor.telefone == data.telefone).first()
+    if existente:
+        return {"id": existente.id, "nome": existente.nome, "telefone": existente.telefone, "ja_existia": True}
+    vendedor = Vendedor(nome=data.nome, telefone=data.telefone)
+    db.add(vendedor)
+    db.commit()
+    db.refresh(vendedor)
+    return {"id": vendedor.id, "nome": vendedor.nome, "telefone": vendedor.telefone}
 
 
 @app.get("/conversas")

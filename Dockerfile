@@ -17,8 +17,8 @@ COPY . .
 # Criar diretorio de dados
 RUN mkdir -p /app/data
 
-# Tornar script de inicio executavel
-RUN chmod +x start.sh
+# Converter line endings (Windows CRLF -> Linux LF) e tornar executavel
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 EXPOSE 8000 8501
 
