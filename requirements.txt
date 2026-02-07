@@ -1,0 +1,27 @@
+# API Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# Banco de Dados
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+
+# OpenAI
+openai==1.58.1
+
+# Agendamento de tarefas
+apscheduler==3.10.4
+
+# Variaveis de ambiente
+python-dotenv==1.0.1
+
+# Validacao de dados
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# HTTP client
+httpx==0.28.1
+
+# Dashboard
+streamlit==1.41.0
+plotly==5.24.1

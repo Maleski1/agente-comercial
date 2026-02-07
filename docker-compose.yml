@@ -1,0 +1,91 @@
+services:
+  agente-comercial:
+    container_name: agente_comercial
+    build: .
+    restart: always
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - evolution-net
+    depends_on:
+      evolution-api:
+        condition: service_started
+
+  evolution-api:
+    container_name: evolution_api
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # Autenticacao
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-minha-chave-secreta-123}
+
+      # Banco de dados (PostgreSQL interno da Evolution)
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:evolution@evolution-postgres:5432/evolution
+
+      # Cache com Redis
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://evolution-redis:6379/0
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_LOCAL_ENABLED=false
+
+      # Servidor
+      - SERVER_PORT=8080
+      - SERVER_URL=http://localhost:8080
+
+      # Logs
+      - LOG_LEVEL=WARN
+      - DEL_INSTANCE=false
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-net
+    depends_on:
+      evolution-postgres:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_started
+
+  evolution-postgres:
+    container_name: evolution_postgres
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  evolution-redis:
+    container_name: evolution_redis
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --port 6379 --appendonly yes
+    volumes:
+      - evolution_redis:/data
+    networks:
+      - evolution-net
+
+volumes:
+  evolution_instances:
+  evolution_pgdata:
+  evolution_redis:
+
+networks:
+  evolution-net:
+    driver: bridge
