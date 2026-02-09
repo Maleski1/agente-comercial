@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     evolution_instance_name: str = "agente-comercial"
 
     # Banco de dados
-    database_url: str = "sqlite:///data/agente_comercial.db"
+    database_url: str = "postgresql://agente:agente123@localhost:5432/agente_comercial"
 
     # Configuracoes do sistema
     gestor_telefone: str = ""

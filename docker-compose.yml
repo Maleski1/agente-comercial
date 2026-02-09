@@ -11,13 +11,34 @@ services:
     environment:
       - EVOLUTION_API_URL=http://evolution-api:8080
       - WEBHOOK_URL=http://agente-comercial:8000/webhook/messages
-    volumes:
-      - ./data:/app/data
+      - DATABASE_URL=postgresql://agente:agente123@app-postgres:5432/agente_comercial
     networks:
       - evolution-net
     depends_on:
       evolution-api:
         condition: service_started
+      app-postgres:
+        condition: service_healthy
+
+  app-postgres:
+    container_name: app_postgres
+    image: postgres:15
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: agente_comercial
+      POSTGRES_USER: agente
+      POSTGRES_PASSWORD: agente123
+    volumes:
+      - app_pgdata:/var/lib/postgresql/data
+    networks:
+      - evolution-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agente -d agente_comercial"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   evolution-api:
     container_name: evolution_api
@@ -85,6 +106,7 @@ services:
       - evolution-net
 
 volumes:
+  app_pgdata:
   evolution_instances:
   evolution_pgdata:
   evolution_redis:

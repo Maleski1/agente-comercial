@@ -2,10 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar dependências do sistema + supervisor
+# Instalar dependências do sistema + supervisor + PostgreSQL client
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     supervisor \
+    libpq-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar e instalar dependências Python

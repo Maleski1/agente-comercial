@@ -10,5 +10,30 @@ services:
       - .env
     environment:
       - WEBHOOK_URL=https://app.reaumarketing.com/webhook/messages
+      - DATABASE_URL=postgresql://agente:agente123@app-postgres:5432/agente_comercial
+    networks:
+      - default
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+
+  app-postgres:
+    container_name: app_postgres
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: agente_comercial
+      POSTGRES_USER: agente
+      POSTGRES_PASSWORD: agente123
     volumes:
-      - ./data:/app/data
+      - app_pgdata:/var/lib/postgresql/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agente -d agente_comercial"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  app_pgdata:
