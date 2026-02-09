@@ -1,13 +1,14 @@
-"""Motor de analise de conversas usando OpenAI."""
+"""Motor de analise de conversas usando OpenAI — multi-tenant."""
 
 import json
 import logging
 from dataclasses import dataclass, field
 
 from openai import AsyncOpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from src.analysis.prompts import SYSTEM_PROMPT, TEMPLATE_ANALISE, formatar_transcricao
-from src.config import settings
+from src.config_manager import get_config
 from src.database.connection import SessionLocal
 from src.database.queries import buscar_prompt_ativo
 
@@ -69,11 +70,11 @@ def _validar_resultado(data: dict) -> ResultadoAnalise:
     )
 
 
-def _carregar_prompt_do_banco() -> str:
-    """Busca prompt ativo no banco. Retorna SYSTEM_PROMPT hardcoded como fallback."""
+def _carregar_prompt_do_banco(empresa_id: int | None = None) -> str:
+    """Busca prompt ativo no banco (empresa first, global fallback)."""
     db = SessionLocal()
     try:
-        config = buscar_prompt_ativo(db)
+        config = buscar_prompt_ativo(db, empresa_id=empresa_id)
         if config:
             return config.conteudo
         return SYSTEM_PROMPT
@@ -82,13 +83,16 @@ def _carregar_prompt_do_banco() -> str:
 
 
 async def analisar_conversa(
-    mensagens: list[dict], system_prompt: str | None = None
+    mensagens: list[dict],
+    system_prompt: str | None = None,
+    empresa_id: int | None = None,
 ) -> ResultadoAnalise:
     """Envia a conversa para o GPT-4o-mini e retorna a analise estruturada.
 
     Args:
         mensagens: lista de dicts com 'remetente', 'conteudo', 'enviada_em'
         system_prompt: prompt customizado (se None, carrega do banco ou usa padrao)
+        empresa_id: se informado, carrega prompt e API key da empresa
 
     Raises:
         ValueError: se a conversa estiver vazia
@@ -98,13 +102,30 @@ async def analisar_conversa(
         raise ValueError("Conversa sem mensagens para analisar.")
 
     if system_prompt is None:
-        system_prompt = _carregar_prompt_do_banco()
+        system_prompt = _carregar_prompt_do_banco(empresa_id)
 
     transcricao = formatar_transcricao(mensagens)
     prompt_usuario = TEMPLATE_ANALISE.format(transcricao=transcricao)
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(
+        api_key=get_config("openai_api_key", empresa_id=empresa_id),
+        timeout=30.0,
+    )
 
+    resultado = await _chamar_openai(client, system_prompt, prompt_usuario)
+    return resultado
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type(RuntimeError),
+    reraise=True,
+)
+async def _chamar_openai(
+    client: AsyncOpenAI, system_prompt: str, prompt_usuario: str,
+) -> "ResultadoAnalise":
+    """Chamada OpenAI com retry automático (3 tentativas, backoff exponencial)."""
     try:
         resposta = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -118,12 +139,12 @@ async def analisar_conversa(
 
         conteudo = resposta.choices[0].message.content
         data = json.loads(conteudo)
-        logger.info("Analise recebida da OpenAI com sucesso.")
+        logger.info("Análise recebida da OpenAI com sucesso.")
         return _validar_resultado(data)
 
     except json.JSONDecodeError as e:
-        logger.error(f"JSON invalido da OpenAI: {e}")
-        raise RuntimeError(f"Resposta da IA nao e JSON valido: {e}")
+        logger.error(f"JSON inválido da OpenAI: {e}")
+        raise RuntimeError(f"Resposta da IA não é JSON válido: {e}")
     except Exception as e:
-        logger.error(f"Erro na chamada OpenAI: {e}")
+        logger.error(f"Erro na chamada OpenAI (tentará retry): {e}")
         raise RuntimeError(f"Falha ao chamar OpenAI: {e}")

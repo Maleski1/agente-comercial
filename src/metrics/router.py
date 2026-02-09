@@ -1,4 +1,4 @@
-"""Endpoints de metricas diarias."""
+"""Endpoints de metricas diarias — multi-tenant."""
 
 import logging
 from datetime import date
@@ -19,6 +19,7 @@ router = APIRouter(prefix="/metricas", tags=["metricas"])
 def calcular(
     data: str = Query(default=None, description="Data no formato YYYY-MM-DD (padrao: hoje)"),
     vendedor_id: int | None = Query(default=None, description="ID do vendedor (padrao: todos)"),
+    empresa_id: int | None = Query(default=None, description="ID da empresa"),
     db: Session = Depends(get_db),
 ):
     """Calcula metricas diarias para um ou todos os vendedores."""
@@ -26,7 +27,7 @@ def calcular(
         data = date.today().isoformat()
 
     try:
-        resultados = calcular_metricas(db, data, vendedor_id)
+        resultados = calcular_metricas(db, data, vendedor_id, empresa_id=empresa_id)
     except Exception as e:
         logger.error(f"Erro ao calcular metricas: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -62,9 +63,13 @@ def metricas_vendedor(
 
 
 @router.get("/dia/{data}")
-def metricas_dia(data: str, db: Session = Depends(get_db)):
+def metricas_dia(
+    data: str,
+    empresa_id: int | None = Query(default=None, description="ID da empresa"),
+    db: Session = Depends(get_db),
+):
     """Metricas de todos os vendedores num dia."""
-    metricas = buscar_metricas_dia(db, data)
+    metricas = buscar_metricas_dia(db, data, empresa_id=empresa_id)
     if not metricas:
         raise HTTPException(status_code=404, detail="Nenhuma metrica encontrada para este dia.")
 
@@ -85,9 +90,13 @@ def metricas_dia(data: str, db: Session = Depends(get_db)):
 
 
 @router.get("/ranking/{data}")
-def ranking(data: str, db: Session = Depends(get_db)):
+def ranking(
+    data: str,
+    empresa_id: int | None = Query(default=None, description="ID da empresa"),
+    db: Session = Depends(get_db),
+):
     """Ranking de vendedores no dia, ordenado por score_medio decrescente."""
-    metricas = buscar_metricas_dia(db, data)
+    metricas = buscar_metricas_dia(db, data, empresa_id=empresa_id)
     if not metricas:
         raise HTTPException(status_code=404, detail="Nenhuma metrica encontrada para este dia.")
 

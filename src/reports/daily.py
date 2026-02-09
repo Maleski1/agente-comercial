@@ -1,9 +1,9 @@
-"""Orquestracao do relatorio diario: calcular -> alertas -> formatar -> enviar."""
+"""Orquestracao do relatorio diario: calcular -> alertas -> formatar -> enviar — multi-tenant."""
 
 import logging
 from datetime import date
 
-from src.config import settings
+from src.config_manager import get_config
 from src.database.connection import SessionLocal
 from src.database.queries import listar_vendedores
 from src.metrics.calculator import calcular_metricas
@@ -14,28 +14,19 @@ logger = logging.getLogger(__name__)
 
 
 def detectar_alertas(metricas: list[dict], nomes: dict[int, str]) -> list[str]:
-    """Analisa metricas e retorna lista de alertas formatados.
-
-    Regras:
-    - score_medio < 5.0 -> alerta score baixo
-    - leads_sem_resposta > 0 -> alerta leads ignorados
-    - tempo_primeira_resp_seg > 600 (10min) -> alerta resposta lenta
-    """
+    """Analisa metricas e retorna lista de alertas formatados."""
     alertas = []
     for m in metricas:
         nome = nomes.get(m["vendedor_id"], f"Vendedor {m['vendedor_id']}")
 
-        # Leads ignorados primeiro — mais urgente para o gestor
         sem_resp = m.get("leads_sem_resposta", 0)
         if sem_resp > 0:
             alertas.append(f"⚠ Leads sem resposta: {nome} ({sem_resp} leads)")
 
-        # Score de qualidade baixo
         score = m.get("score_medio")
         if score is not None and score < 5.0:
             alertas.append(f"⚠ Score baixo: {nome} ({score})")
 
-        # Primeira resposta acima de 10 minutos
         tempo = m.get("tempo_primeira_resp_seg")
         if tempo is not None and tempo > 600:
             alertas.append(f"⚠ Resposta lenta: {nome} ({formatar_tempo(tempo)})")
@@ -44,10 +35,7 @@ def detectar_alertas(metricas: list[dict], nomes: dict[int, str]) -> list[str]:
 
 
 def dividir_mensagens(texto: str, limite: int = 4000) -> list[str]:
-    """Divide texto em blocos respeitando limite de chars do WhatsApp (~4096).
-
-    Quebra nos separadores '\\n\\n' para nao cortar no meio de uma secao.
-    """
+    """Divide texto em blocos respeitando limite de chars do WhatsApp (~4096)."""
     if len(texto) <= limite:
         return [texto]
 
@@ -70,22 +58,25 @@ def dividir_mensagens(texto: str, limite: int = 4000) -> list[str]:
     return partes
 
 
-async def gerar_e_enviar_relatorio(data: str | None = None) -> dict:
+async def gerar_e_enviar_relatorio(
+    empresa_id: int | None = None, data: str | None = None
+) -> dict:
     """Pipeline principal: calcula metricas, gera relatorio, envia ao gestor.
 
-    Usa SessionLocal() direto (nao Depends) porque pode ser chamado
-    pelo scheduler fora do contexto HTTP.
+    Args:
+        empresa_id: se informado, gera relatorio apenas para essa empresa
+        data: formato YYYY-MM-DD (padrao: hoje)
     """
     data = data or date.today().strftime("%Y-%m-%d")
-    logger.info(f"Gerando relatorio para {data}...")
+    logger.info(f"Gerando relatorio para {data} empresa={empresa_id}...")
 
     db = SessionLocal()
     try:
-        # 1. Calcular metricas de todos os vendedores
-        metricas = calcular_metricas(db, data)
+        # 1. Calcular metricas
+        metricas = calcular_metricas(db, data, empresa_id=empresa_id)
 
         # 2. Mapear vendedor_id -> nome
-        vendedores = listar_vendedores(db)
+        vendedores = listar_vendedores(db, empresa_id=empresa_id)
         nomes = {v.id: v.nome for v in vendedores}
 
         # 3. Detectar alertas
@@ -95,17 +86,23 @@ async def gerar_e_enviar_relatorio(data: str | None = None) -> dict:
         texto = montar_relatorio_completo(data, metricas, nomes, alertas)
 
         # 5. Dividir se necessario e enviar
-        partes = dividir_mensagens(texto)
-        for parte in partes:
-            await enviar_mensagem(settings.gestor_telefone, parte)
+        gestor_telefone = get_config("gestor_telefone", empresa_id=empresa_id)
+        if gestor_telefone:
+            partes = dividir_mensagens(texto)
+            for parte in partes:
+                await enviar_mensagem(gestor_telefone, parte, empresa_id=empresa_id)
+        else:
+            partes = []
+            logger.warning(f"Sem gestor_telefone para empresa {empresa_id}. Relatorio nao enviado.")
 
         logger.info(
-            f"Relatorio enviado: {len(metricas)} vendedores, "
+            f"Relatorio gerado: empresa={empresa_id} {len(metricas)} vendedores, "
             f"{len(alertas)} alertas, {len(partes)} mensagem(ns)"
         )
 
         return {
             "data": data,
+            "empresa_id": empresa_id,
             "vendedores": len(metricas),
             "alertas": len(alertas),
             "mensagens_enviadas": len(partes),

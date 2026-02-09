@@ -1,17 +1,18 @@
 """Ponto de entrada do Agente Comercial."""
 
 import logging
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.database.connection import SessionLocal, criar_tabelas
 from src.database.models import Conversa, Mensagem, Vendedor
 from src.analysis.router import router as analysis_router
 from src.metrics.router import router as metrics_router
 from src.reports.router import router as reports_router
-from src.reports.scheduler import iniciar_scheduler, parar_scheduler
+from src.reports.scheduler import iniciar_scheduler, parar_scheduler, recarregar_jobs
 from src.whatsapp.webhook import router as webhook_router
 
 # Configurar logging
@@ -21,11 +22,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Iniciando Agente Comercial...")
+    criar_tabelas()
+    logger.info("Banco de dados pronto.")
+    iniciar_scheduler()
+    yield
+    # Shutdown
+    parar_scheduler()
+    logger.info("Agente Comercial encerrado.")
+
+
 # Criar app FastAPI
 app = FastAPI(
     title="Agente Comercial",
-    description="Sistema de analise de atendimentos comerciais no WhatsApp",
-    version="0.1.0",
+    description="Sistema de análise de atendimentos comerciais no WhatsApp",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Registrar rotas
@@ -43,25 +59,17 @@ def get_db():
         db.close()
 
 
-@app.on_event("startup")
-async def startup():
-    logger.info("Iniciando Agente Comercial...")
-    criar_tabelas()
-    logger.info("Banco de dados pronto.")
-    iniciar_scheduler()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    parar_scheduler()
-    logger.info("Agente Comercial encerrado.")
+def validar_admin_key(x_admin_key: str = Header(...)):
+    """Valida admin_key no header para endpoints internos."""
+    if x_admin_key != settings.admin_key:
+        raise HTTPException(status_code=403, detail="Admin key inválida")
 
 
 @app.get("/")
 async def root():
     return {
         "app": "Agente Comercial",
-        "versao": "0.1.0",
+        "versao": "1.0.0",
         "status": "rodando",
     }
 
@@ -71,35 +79,35 @@ async def health():
     return {"status": "ok"}
 
 
-class VendedorCreate(BaseModel):
-    nome: str
-    telefone: str
-
-
-@app.get("/vendedores")
-async def listar_vendedores(db: Session = Depends(get_db)):
-    vendedores = db.query(Vendedor).all()
+@app.get("/vendedores", dependencies=[Depends(validar_admin_key)])
+async def api_listar_vendedores(
+    empresa_id: int = Query(..., description="ID da empresa"),
+    db: Session = Depends(get_db),
+):
+    """Lista vendedores de uma empresa (requer admin_key)."""
+    vendedores = (
+        db.query(Vendedor)
+        .filter(Vendedor.empresa_id == empresa_id)
+        .all()
+    )
     return [
         {"id": v.id, "nome": v.nome, "telefone": v.telefone, "ativo": v.ativo}
         for v in vendedores
     ]
 
 
-@app.post("/vendedores", status_code=201)
-async def criar_vendedor(data: VendedorCreate, db: Session = Depends(get_db)):
-    existente = db.query(Vendedor).filter(Vendedor.telefone == data.telefone).first()
-    if existente:
-        return {"id": existente.id, "nome": existente.nome, "telefone": existente.telefone, "ja_existia": True}
-    vendedor = Vendedor(nome=data.nome, telefone=data.telefone)
-    db.add(vendedor)
-    db.commit()
-    db.refresh(vendedor)
-    return {"id": vendedor.id, "nome": vendedor.nome, "telefone": vendedor.telefone}
-
-
-@app.get("/conversas")
-async def listar_conversas(db: Session = Depends(get_db)):
-    conversas = db.query(Conversa).order_by(Conversa.atualizada_em.desc()).all()
+@app.get("/conversas", dependencies=[Depends(validar_admin_key)])
+async def api_listar_conversas(
+    empresa_id: int = Query(..., description="ID da empresa"),
+    db: Session = Depends(get_db),
+):
+    """Lista conversas de uma empresa (requer admin_key)."""
+    conversas = (
+        db.query(Conversa)
+        .filter(Conversa.empresa_id == empresa_id)
+        .order_by(Conversa.atualizada_em.desc())
+        .all()
+    )
     return [
         {
             "id": c.id,
@@ -114,8 +122,9 @@ async def listar_conversas(db: Session = Depends(get_db)):
     ]
 
 
-@app.get("/conversas/{conversa_id}/mensagens")
-async def listar_mensagens(conversa_id: int, db: Session = Depends(get_db)):
+@app.get("/conversas/{conversa_id}/mensagens", dependencies=[Depends(validar_admin_key)])
+async def api_listar_mensagens(conversa_id: int, db: Session = Depends(get_db)):
+    """Lista mensagens de uma conversa (requer admin_key)."""
     mensagens = (
         db.query(Mensagem)
         .filter_by(conversa_id=conversa_id)
@@ -132,3 +141,10 @@ async def listar_mensagens(conversa_id: int, db: Session = Depends(get_db)):
         }
         for m in mensagens
     ]
+
+
+@app.post("/admin/scheduler/reload", dependencies=[Depends(validar_admin_key)])
+async def api_recarregar_scheduler():
+    """Recarrega jobs do scheduler (útil após adicionar nova empresa)."""
+    recarregar_jobs()
+    return {"status": "ok", "mensagem": "Jobs do scheduler recarregados"}

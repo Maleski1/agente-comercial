@@ -1,9 +1,9 @@
-"""Endpoints de analise de conversas."""
+"""Endpoints de analise de conversas — multi-tenant."""
 
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from src.analysis.analyzer import analisar_conversa
@@ -20,7 +20,11 @@ router = APIRouter(tags=["analise"])
 
 
 @router.post("/analisar/{conversa_id}")
-async def analisar(conversa_id: int, db: Session = Depends(get_db)):
+async def analisar(
+    conversa_id: int,
+    empresa_id: int | None = Query(default=None, description="ID da empresa"),
+    db: Session = Depends(get_db),
+):
     """Analisa uma conversa com IA e salva o resultado."""
     conversa = buscar_conversa_com_mensagens(db, conversa_id)
     if not conversa:
@@ -28,6 +32,9 @@ async def analisar(conversa_id: int, db: Session = Depends(get_db)):
 
     if not conversa.mensagens:
         raise HTTPException(status_code=400, detail="Conversa sem mensagens.")
+
+    # Usar empresa_id da conversa se nao informado
+    eid = empresa_id or conversa.empresa_id
 
     mensagens = [
         {
@@ -39,7 +46,7 @@ async def analisar(conversa_id: int, db: Session = Depends(get_db)):
     ]
 
     try:
-        resultado = await analisar_conversa(mensagens)
+        resultado = await analisar_conversa(mensagens, empresa_id=eid)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=500, detail=str(e))
 

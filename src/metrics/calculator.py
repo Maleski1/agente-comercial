@@ -1,4 +1,4 @@
-"""Motor de calculo de metricas diarias por vendedor."""
+"""Motor de calculo de metricas diarias por vendedor — multi-tenant."""
 
 import logging
 from dataclasses import dataclass
@@ -23,18 +23,7 @@ class TemposResposta:
 
 
 def calcular_tempos_resposta(mensagens: list[Mensagem]) -> TemposResposta:
-    """Calcula tempo de primeira resposta e tempo medio de resposta.
-
-    Percorre mensagens cronologicamente:
-    - Primeira resposta: delta entre 1a msg do lead e 1a resposta do vendedor
-    - Media: cada vez que lead manda msg, mede delta ate proxima resposta do vendedor
-
-    Args:
-        mensagens: lista de Mensagem ordenada por enviada_em
-
-    Returns:
-        TemposResposta com valores em segundos, ou None se nao aplicavel
-    """
+    """Calcula tempo de primeira resposta e tempo medio de resposta."""
     primeira_resposta: int | None = None
     deltas: list[int] = []
     timestamp_lead: datetime | None = None
@@ -143,22 +132,24 @@ def calcular_metricas_vendedor(
 
 
 def calcular_metricas(
-    db: Session, data: str, vendedor_id: int | None = None
+    db: Session, data: str, vendedor_id: int | None = None,
+    empresa_id: int | None = None,
 ) -> list[dict]:
     """Calcula metricas para um ou todos os vendedores num dia.
 
     Args:
         data: formato YYYY-MM-DD
         vendedor_id: se informado, calcula so para esse vendedor
+        empresa_id: se informado, filtra vendedores da empresa
     """
     if vendedor_id is not None:
-        conversas = buscar_conversas_do_dia(db, data, vendedor_id)
+        conversas = buscar_conversas_do_dia(db, data, vendedor_id, empresa_id=empresa_id)
         return [calcular_metricas_vendedor(db, vendedor_id, data, conversas)]
 
-    vendedores = listar_vendedores(db)
+    vendedores = listar_vendedores(db, empresa_id=empresa_id)
     resultados = []
     for vendedor in vendedores:
-        conversas = buscar_conversas_do_dia(db, data, vendedor.id)
+        conversas = buscar_conversas_do_dia(db, data, vendedor.id, empresa_id=empresa_id)
         resultado = calcular_metricas_vendedor(db, vendedor.id, data, conversas)
         resultados.append(resultado)
 

@@ -1,4 +1,4 @@
-"""Endpoint para trigger manual do relatorio."""
+"""Endpoint para trigger manual do relatorio — multi-tenant."""
 
 from datetime import date
 
@@ -12,8 +12,9 @@ router = APIRouter(tags=["relatorios"])
 @router.post("/relatorio/enviar")
 async def enviar_relatorio(
     data: str = Query(default=None, description="Data no formato YYYY-MM-DD (padrao: hoje)"),
+    empresa_id: int | None = Query(default=None, description="ID da empresa"),
 ):
     """Gera e envia o relatorio diario manualmente."""
     data = data or date.today().strftime("%Y-%m-%d")
-    resultado = await gerar_e_enviar_relatorio(data)
+    resultado = await gerar_e_enviar_relatorio(empresa_id=empresa_id, data=data)
     return resultado
