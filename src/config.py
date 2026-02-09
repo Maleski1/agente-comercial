@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     gestor_telefone: str = ""
     horario_relatorio: str = "20:00"
     webhook_url: str = "http://host.docker.internal:8000/webhook/messages"
+    webhook_secret: str = ""  # secret para validar webhooks da Evolution API
+    admin_key: str = "admin123"  # senha para pagina admin do dashboard
 
     model_config = {"env_file": ".env"}
 
