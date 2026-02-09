@@ -12,6 +12,10 @@ venv/
 
 # Banco de dados local
 data/*.db
+*.db
+
+# Arquivos temporários
+qrcode.html
 
 # IDE
 .vscode/
