@@ -19,7 +19,7 @@ from src.dashboard.theme import (  # noqa: E402
     render_footer,
     CORES,
 )
-from src.database.queries import buscar_metricas_vendedor, buscar_metricas_periodo, listar_vendedores
+from src.database.queries import buscar_metricas_vendedor, buscar_metricas_periodo, listar_vendedores, criar_vendedor
 from src.reports.templates import formatar_tempo
 
 # --- Tema e autenticação ---
@@ -35,6 +35,25 @@ with get_db() as db:
 
 if not vendedores:
     st.info("Nenhum vendedor cadastrado.")
+
+# --- Cadastrar novo vendedor ---
+with st.expander("Cadastrar Novo Vendedor", expanded=not vendedores):
+    col_nome, col_tel = st.columns(2)
+    with col_nome:
+        novo_nome = st.text_input("Nome do vendedor", key="novo_vend_nome")
+    with col_tel:
+        novo_tel = st.text_input("Telefone (ex: 5549991125253)", key="novo_vend_tel")
+
+    if st.button("Cadastrar Vendedor", type="primary", key="btn_criar_vend"):
+        if not novo_nome.strip() or not novo_tel.strip():
+            st.error("Preencha nome e telefone.")
+        else:
+            with get_db() as db:
+                vend = criar_vendedor(db, novo_nome.strip(), novo_tel.strip(), empresa_id=empresa_id)
+            st.success(f"Vendedor '{vend.nome}' cadastrado!")
+            st.rerun()
+
+if not vendedores:
     st.stop()
 
 # --- Seletores ---
