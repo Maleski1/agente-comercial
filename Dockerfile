@@ -2,24 +2,25 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar dependencias do sistema
+# Instalar dependências do sistema + supervisor
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar e instalar dependencias Python
+# Copiar e instalar dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar codigo da aplicacao
+# Copiar código da aplicação
 COPY . .
 
-# Criar diretorio de dados
-RUN mkdir -p /app/data
+# Copiar config do supervisor
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Converter line endings (Windows CRLF -> Linux LF) e tornar executavel
-RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
+# Criar diretório de dados
+RUN mkdir -p /app/data
 
 EXPOSE 8000 8501
 
-CMD ["./start.sh"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

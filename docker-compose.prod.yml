@@ -1,0 +1,14 @@
+services:
+  agente-comercial:
+    container_name: agente_comercial
+    build: .
+    restart: always
+    ports:
+      - "127.0.0.1:8501:8501"
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    environment:
+      - WEBHOOK_URL=https://app.reaumarketing.com/webhook/messages
+    volumes:
+      - ./data:/app/data
