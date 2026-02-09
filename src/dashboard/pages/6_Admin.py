@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 
+import os  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from src.dashboard.utils import get_db  # noqa: E402
@@ -72,7 +73,8 @@ else:
             st.text(f"Instâncias Evolution: {emp['instancias']}")
             st.divider()
             st.text(f"Token: {emp['token']}")
-            dashboard_url = f"http://localhost:8501/?token={emp['token']}"
+            base_url = os.environ.get("DASHBOARD_URL", "http://localhost:8501")
+            dashboard_url = f"{base_url}/?token={emp['token']}"
             st.code(dashboard_url, language=None)
 
             label_btn = "Desativar" if emp["ativa"] else "Ativar"
@@ -100,7 +102,8 @@ if st.button("Criar Empresa", type="primary", key="criar_empresa"):
             empresa = criar_empresa(db, novo_nome.strip())
         st.success(f"Empresa '{empresa.nome}' criada!")
         st.text(f"Token: {empresa.token}")
-        dashboard_url = f"http://localhost:8501/?token={empresa.token}"
+        base_url = os.environ.get("DASHBOARD_URL", "http://localhost:8501")
+        dashboard_url = f"{base_url}/?token={empresa.token}"
         st.code(dashboard_url, language=None)
         st.caption("Compartilhe este link com o dono da empresa.")
 
