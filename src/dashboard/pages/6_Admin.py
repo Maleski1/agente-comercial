@@ -107,4 +107,60 @@ if st.button("Criar Empresa", type="primary", key="criar_empresa"):
         st.code(dashboard_url, language=None)
         st.caption("Compartilhe este link com o dono da empresa.")
 
+# =============================================================================
+# Importar Dados (dump SQL) — temporário
+# =============================================================================
+dump_path = Path(__file__).resolve().parent.parent.parent.parent / "dump_dados.sql"
+if dump_path.exists():
+    st.divider()
+    st.subheader("Importar Dados (dump)")
+    st.caption("Importa dados do dump_dados.sql para o banco atual. Use apenas uma vez.")
+
+    if st.button("Importar Dados", type="secondary", key="importar_dump"):
+        from sqlalchemy import text
+        from src.database.connection import engine
+
+        with open(dump_path, "r", encoding="utf-8") as f:
+            sql_content = f.read()
+
+        statements = [
+            line.strip()
+            for line in sql_content.split("\n")
+            if line.strip().startswith("INSERT INTO")
+            or line.strip().startswith("SELECT pg_catalog.setval")
+        ]
+
+        tabelas = [
+            "configuracoes", "configuracoes_prompt", "metricas_diarias",
+            "analises", "mensagens", "conversas", "vendedores",
+            "instancias_evolution", "empresas",
+        ]
+
+        with engine.begin() as conn:
+            for tabela in tabelas:
+                try:
+                    conn.execute(text(f"DELETE FROM {tabela}"))
+                except Exception:
+                    pass
+
+            ok, erros = 0, 0
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    ok += 1
+                except Exception:
+                    erros += 1
+
+        with engine.begin() as conn:
+            for tabela in reversed(tabelas):
+                try:
+                    max_id = conn.execute(text(f"SELECT MAX(id) FROM {tabela}")).scalar()
+                    if max_id:
+                        conn.execute(text(f"SELECT setval('{tabela}_id_seq', {max_id})"))
+                except Exception:
+                    pass
+
+        st.success(f"Importação concluída! {ok} inserts OK, {erros} erros.")
+        st.rerun()
+
 render_footer()

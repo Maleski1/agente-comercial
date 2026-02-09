@@ -148,3 +148,5 @@ async def api_recarregar_scheduler():
     """Recarrega jobs do scheduler (útil após adicionar nova empresa)."""
     recarregar_jobs()
     return {"status": "ok", "mensagem": "Jobs do scheduler recarregados"}
+
+
