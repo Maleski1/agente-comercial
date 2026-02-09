@@ -1,8 +1,10 @@
-"""Utilitarios compartilhados do dashboard: sessao DB, cores, helpers."""
+"""Utilitarios compartilhados do dashboard: sessao DB, cores, helpers, auth."""
 
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+
+import streamlit as st
 
 # Fix sys.path para imports "from src.xxx" funcionarem
 # quando Streamlit roda como processo separado (streamlit run src/dashboard/app.py)
@@ -10,12 +12,16 @@ _project_root = str(Path(__file__).resolve().parent.parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from src.database.connection import SessionLocal  # noqa: E402
+from src.database.connection import SessionLocal, criar_tabelas  # noqa: E402
+from src.database.queries import buscar_empresa_por_token  # noqa: E402
+
+# Garantir que todas as tabelas existem
+criar_tabelas()
 
 
 @contextmanager
 def get_db():
-    """Context manager para sessao do banco. Mesmo padrao do daily.py."""
+    """Context manager para sessao do banco."""
     db = SessionLocal()
     try:
         yield db
@@ -23,35 +29,33 @@ def get_db():
         db.close()
 
 
-# Paleta de cores para graficos
-CORES = {
-    "primaria": "#1f77b4",
-    "sucesso": "#2ca02c",
-    "alerta": "#ff7f0e",
-    "perigo": "#d62728",
-    "neutro": "#7f7f7f",
-}
+def validar_token_empresa():
+    """Valida token na URL e seta empresa no session_state. Bloqueia se invalido.
 
-COR_CLASSIFICACAO = {
-    "cliente": "#2ca02c",
-    "sql": "#1f77b4",
-    "mql": "#ff7f0e",
-    "lead": "#7f7f7f",
-}
+    Returns:
+        tuple (empresa_id, empresa_nome)
+    """
+    # Ja validado nesta sessao?
+    if "empresa_id" in st.session_state and st.session_state["empresa_id"]:
+        return st.session_state["empresa_id"], st.session_state["empresa_nome"]
 
-COR_SENTIMENTO = {
-    "positivo": "#2ca02c",
-    "neutro": "#1f77b4",
-    "negativo": "#d62728",
-}
+    token = st.query_params.get("token")
+    if not token:
+        st.error("Acesso negado. Use o link fornecido pela empresa.")
+        st.stop()
+
+    with get_db() as db:
+        empresa = buscar_empresa_por_token(db, token)
+
+    if not empresa:
+        st.error("Token invalido ou empresa desativada.")
+        st.stop()
+
+    st.session_state["empresa_id"] = empresa.id
+    st.session_state["empresa_nome"] = empresa.nome
+    st.session_state["empresa_token"] = token
+    return empresa.id, empresa.nome
 
 
-def score_cor(score: float | None) -> str:
-    """Retorna cor hex baseada no score de qualidade do vendedor (0-10)."""
-    if score is None:
-        return CORES["neutro"]
-    if score >= 7:
-        return CORES["sucesso"]
-    if score >= 5:
-        return CORES["alerta"]
-    return CORES["perigo"]
+# Re-exportar paleta e helpers do theme.py (backward compatibility)
+from src.dashboard.theme import CORES, COR_CLASSIFICACAO, COR_SENTIMENTO, score_cor  # noqa: F401
