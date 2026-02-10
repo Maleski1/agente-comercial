@@ -124,6 +124,23 @@ def buscar_vendedor_por_telefone(
 
 
 def criar_vendedor(db: Session, nome: str, telefone: str, empresa_id: int | None = None) -> Vendedor:
+    # Reativar vendedor inativo com mesmo telefone na empresa
+    existente = (
+        db.query(Vendedor)
+        .filter(
+            Vendedor.empresa_id == empresa_id,
+            Vendedor.telefone == telefone,
+            Vendedor.ativo.is_(False),
+        )
+        .first()
+    )
+    if existente:
+        existente.nome = nome
+        existente.ativo = True
+        db.commit()
+        db.refresh(existente)
+        return existente
+
     vendedor = Vendedor(nome=nome, telefone=telefone, empresa_id=empresa_id)
     db.add(vendedor)
     db.commit()
