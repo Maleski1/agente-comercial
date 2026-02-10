@@ -28,6 +28,7 @@ from src.database.queries import (  # noqa: E402
     listar_vendedores,
     buscar_conversas_periodo,
 )
+from src.metrics.calculator import calcular_metricas  # noqa: E402
 from src.reports.daily import detectar_alertas  # noqa: E402
 from src.reports.templates import formatar_tempo  # noqa: E402
 
@@ -53,6 +54,14 @@ str_fim = data_fim.strftime("%Y-%m-%d")
 # --- Carregar dados (filtrado por empresa) ---
 with get_db() as db:
     metricas_raw = buscar_metricas_periodo(db, str_inicio, str_fim, empresa_id=empresa_id)
+
+    # Auto-calcular métricas do dia atual se não existem
+    hoje = date.today().isoformat()
+    if not metricas_raw or not any(m.data == hoje for m in metricas_raw):
+        if str_inicio <= hoje <= str_fim:
+            calcular_metricas(db, hoje, empresa_id=empresa_id)
+            metricas_raw = buscar_metricas_periodo(db, str_inicio, str_fim, empresa_id=empresa_id)
+
     vendedores_raw = listar_vendedores(db, empresa_id=empresa_id)
     conversas_raw = buscar_conversas_periodo(db, str_inicio, str_fim, empresa_id=empresa_id)
 

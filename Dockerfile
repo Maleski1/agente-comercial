@@ -2,6 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Timezone Brasil
+ENV TZ=America/Sao_Paulo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Instalar dependências do sistema + supervisor + PostgreSQL client
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
