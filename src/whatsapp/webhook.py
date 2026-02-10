@@ -75,18 +75,20 @@ async def receber_mensagem(
     # --- Identificar o vendedor DENTRO da empresa ---
     vendedor = None
 
-    # 1. Buscar pelo telefone da instancia (match exato ou parcial)
+    # 1. Buscar pelo telefone da instancia (match flexível p/ 9° dígito BR)
     instance_phone = msg.instance_phone
     if instance_phone:
-        vendedor = (
+        # Buscar vendedores ativos da empresa e comparar últimos 8 dígitos
+        vendedores_ativos = (
             db.query(Vendedor)
-            .filter(
-                Vendedor.empresa_id == empresa_id,
-                Vendedor.ativo.is_(True),
-                Vendedor.telefone.contains(instance_phone),
-            )
-            .first()
+            .filter(Vendedor.empresa_id == empresa_id, Vendedor.ativo.is_(True))
+            .all()
         )
+        sufixo_inst = instance_phone[-8:]
+        for v in vendedores_ativos:
+            if v.telefone[-8:] == sufixo_inst:
+                vendedor = v
+                break
 
     # 2. Buscar por conversa existente com esse lead (dentro da empresa)
     if vendedor is None and not msg.enviada_por_mim:
