@@ -93,19 +93,18 @@ def atualizar_instancia(
     return instancia
 
 
-def desativar_instancia(db: Session, instancia_id: int, empresa_id: int) -> InstanciaEvolution | None:
-    """Desativa uma instancia Evolution (soft delete)."""
+def remover_instancia(db: Session, instancia_id: int, empresa_id: int) -> bool:
+    """Remove uma instancia Evolution do banco (hard delete)."""
     instancia = (
         db.query(InstanciaEvolution)
         .filter(InstanciaEvolution.id == instancia_id, InstanciaEvolution.empresa_id == empresa_id)
         .first()
     )
     if not instancia:
-        return None
-    instancia.ativa = False
+        return False
+    db.delete(instancia)
     db.commit()
-    db.refresh(instancia)
-    return instancia
+    return True
 
 
 # === Queries de Vendedor ===

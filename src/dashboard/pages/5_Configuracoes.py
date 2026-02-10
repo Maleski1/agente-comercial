@@ -19,7 +19,7 @@ from src.database.queries import (  # noqa: E402
     listar_instancias_empresa,
     criar_instancia_evolution,
     atualizar_instancia,
-    desativar_instancia,
+    remover_instancia,
 )
 from src.analysis.prompts import SYSTEM_PROMPT  # noqa: E402
 from src.config import settings  # noqa: E402
@@ -254,9 +254,9 @@ with tab_instancias:
                                     st.warning(f"Aviso: erro ao remover do Evolution ({e.response.status_code})")
                             except Exception:
                                 st.warning("Aviso: não foi possível remover do Evolution.")
-                        # 2. Desativar no banco
+                        # 2. Remover do banco
                         with get_db() as db:
-                            desativar_instancia(db, inst['id'], empresa_id)
+                            remover_instancia(db, inst['id'], empresa_id)
                         st.success(f"Instância '{inst['nome']}' removida!")
                         st.rerun()
 
