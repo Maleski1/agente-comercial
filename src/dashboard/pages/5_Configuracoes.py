@@ -18,6 +18,7 @@ from src.database.queries import (  # noqa: E402
     salvar_prompt,
     listar_instancias_empresa,
     criar_instancia_evolution,
+    atualizar_instancia,
 )
 from src.analysis.prompts import SYSTEM_PROMPT  # noqa: E402
 from src.config_manager import get_config  # noqa: E402
@@ -190,6 +191,24 @@ with tab_instancias:
                                     st.info("Nenhum QR retornado. Instância já pode estar conectada.")
                             except Exception as e:
                                 st.error(f"Erro ao gerar QR: {e}")
+
+                st.divider()
+                st.caption("Editar instância")
+                novo_nome_inst = st.text_input(
+                    "Nome da instância", value=inst['nome'], key=f"edit_nome_{inst['id']}"
+                )
+                novo_tel_inst = st.text_input(
+                    "Telefone", value=inst['telefone'] or "", key=f"edit_tel_{inst['id']}"
+                )
+                if st.button("Salvar alterações", key=f"save_{inst['id']}"):
+                    with get_db() as db:
+                        atualizar_instancia(
+                            db, inst['id'], empresa_id,
+                            novo_nome_inst.strip() or None,
+                            novo_tel_inst.strip() or None,
+                        )
+                    st.success("Instância atualizada!")
+                    st.rerun()
 
     st.divider()
     st.subheader("Adicionar Instância")

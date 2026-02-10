@@ -72,6 +72,27 @@ def criar_instancia_evolution(
     return instancia
 
 
+def atualizar_instancia(
+    db: Session, instancia_id: int, empresa_id: int,
+    nome_instancia: str | None = None, telefone: str | None = None,
+) -> InstanciaEvolution | None:
+    """Atualiza dados de uma instancia Evolution."""
+    instancia = (
+        db.query(InstanciaEvolution)
+        .filter(InstanciaEvolution.id == instancia_id, InstanciaEvolution.empresa_id == empresa_id)
+        .first()
+    )
+    if not instancia:
+        return None
+    if nome_instancia is not None:
+        instancia.nome_instancia = nome_instancia
+    if telefone is not None:
+        instancia.telefone = telefone
+    db.commit()
+    db.refresh(instancia)
+    return instancia
+
+
 # === Queries de Vendedor ===
 
 
@@ -91,6 +112,21 @@ def buscar_vendedor_por_telefone(
 def criar_vendedor(db: Session, nome: str, telefone: str, empresa_id: int | None = None) -> Vendedor:
     vendedor = Vendedor(nome=nome, telefone=telefone, empresa_id=empresa_id)
     db.add(vendedor)
+    db.commit()
+    db.refresh(vendedor)
+    return vendedor
+
+
+def desativar_vendedor(db: Session, vendedor_id: int, empresa_id: int) -> Vendedor | None:
+    """Desativa um vendedor (soft delete). Histórico de conversas e métricas permanece intacto."""
+    vendedor = (
+        db.query(Vendedor)
+        .filter(Vendedor.id == vendedor_id, Vendedor.empresa_id == empresa_id)
+        .first()
+    )
+    if not vendedor:
+        return None
+    vendedor.ativo = False
     db.commit()
     db.refresh(vendedor)
     return vendedor

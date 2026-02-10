@@ -19,7 +19,7 @@ from src.dashboard.theme import (  # noqa: E402
     render_footer,
     CORES,
 )
-from src.database.queries import buscar_metricas_vendedor, buscar_metricas_periodo, listar_vendedores, criar_vendedor
+from src.database.queries import buscar_metricas_vendedor, buscar_metricas_periodo, listar_vendedores, criar_vendedor, desativar_vendedor
 from src.reports.templates import formatar_tempo
 
 # --- Tema e autenticação ---
@@ -52,6 +52,22 @@ with st.expander("Cadastrar Novo Vendedor", expanded=not vendedores):
                 vend = criar_vendedor(db, novo_nome.strip(), novo_tel.strip(), empresa_id=empresa_id)
             st.success(f"Vendedor '{vend.nome}' cadastrado!")
             st.rerun()
+
+# --- Gerenciar Vendedores ---
+if vendedores:
+    with st.expander("Gerenciar Vendedores"):
+        with get_db() as db:
+            todos_vendedores = listar_vendedores(db, empresa_id=empresa_id)
+        for v in todos_vendedores:
+            col_info, col_btn = st.columns([3, 1])
+            with col_info:
+                st.text(f"{v.nome} — {v.telefone}")
+            with col_btn:
+                if st.button("Remover", key=f"rm_{v.id}"):
+                    with get_db() as db:
+                        desativar_vendedor(db, v.id, empresa_id)
+                    st.success(f"Vendedor '{v.nome}' removido.")
+                    st.rerun()
 
 if not vendedores:
     st.stop()
