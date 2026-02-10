@@ -21,6 +21,7 @@ from src.database.queries import (  # noqa: E402
     atualizar_instancia,
 )
 from src.analysis.prompts import SYSTEM_PROMPT  # noqa: E402
+from src.config import settings  # noqa: E402
 from src.config_manager import get_config  # noqa: E402
 
 criar_tabelas()
@@ -147,7 +148,7 @@ with tab_instancias:
             with st.expander(f"{inst['nome']} {'(ativa)' if inst['ativa'] else '(inativa)'}"):
                 st.text(f"Telefone: {inst['telefone'] or 'não definido'}")
 
-                c1, c2 = st.columns(2)
+                c1, c2, c3 = st.columns(3)
                 with c1:
                     if st.button("Status", key=f"status_{inst['id']}"):
                         if not evo_url or not evo_key:
@@ -191,6 +192,31 @@ with tab_instancias:
                                     st.info("Nenhum QR retornado. Instância já pode estar conectada.")
                             except Exception as e:
                                 st.error(f"Erro ao gerar QR: {e}")
+                with c3:
+                    if st.button("Webhook", key=f"wh_{inst['id']}"):
+                        if not evo_url or not evo_key:
+                            st.error("Configure a Evolution API primeiro.")
+                        elif not settings.webhook_url or not settings.webhook_secret:
+                            st.error("WEBHOOK_URL ou WEBHOOK_SECRET não definidos no ambiente.")
+                        else:
+                            try:
+                                r = httpx.post(
+                                    f"{evo_url}/webhook/set/{inst['nome']}",
+                                    headers={"apikey": evo_key, "Content-Type": "application/json"},
+                                    json={
+                                        "webhook": {
+                                            "url": settings.webhook_url,
+                                            "enabled": True,
+                                            "headers": {"apikey": settings.webhook_secret},
+                                            "events": ["MESSAGES_UPSERT"],
+                                        }
+                                    },
+                                    timeout=10,
+                                )
+                                r.raise_for_status()
+                                st.success("Webhook configurado!")
+                            except Exception as e:
+                                st.error(f"Erro ao configurar webhook: {e}")
 
                 st.divider()
                 st.caption("Editar instância")
@@ -217,18 +243,82 @@ with tab_instancias:
     novo_tel = st.text_input("Telefone (opcional)", key="nova_inst_tel")
 
     if st.button("Criar Instância", type="primary", key="criar_instancia"):
-        if not novo_nome.strip():
+        nome_inst = novo_nome.strip()
+        tel_inst = novo_tel.strip() or None
+
+        if not nome_inst:
             st.error("Informe o nome da instância.")
+        elif not evo_url or not evo_key:
+            st.error("Configure a Evolution API primeiro (aba Evolution API).")
         else:
-            with get_db() as db:
-                try:
-                    criar_instancia_evolution(
-                        db, empresa_id, novo_nome.strip(), novo_tel.strip() or None
-                    )
-                    st.success(f"Instância '{novo_nome.strip()}' criada!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao criar instância: {e}")
+            # 1. Criar instância na Evolution API
+            try:
+                r = httpx.post(
+                    f"{evo_url}/instance/create",
+                    headers={"apikey": evo_key, "Content-Type": "application/json"},
+                    json={
+                        "instanceName": nome_inst,
+                        "integration": "WHATSAPP-BAILEYS",
+                        "qrcode": True,
+                    },
+                    timeout=15,
+                )
+                r.raise_for_status()
+                evo_data = r.json()
+            except httpx.HTTPStatusError as e:
+                st.error(f"Erro ao criar instância no Evolution (HTTP {e.response.status_code}): {e.response.text}")
+                evo_data = None
+            except Exception as e:
+                st.error(f"Erro ao criar instância no Evolution: {e}")
+                evo_data = None
+
+            if evo_data is not None:
+                # 2. Configurar webhook automaticamente
+                webhook_ok = False
+                if settings.webhook_url and settings.webhook_secret:
+                    try:
+                        r = httpx.post(
+                            f"{evo_url}/webhook/set/{nome_inst}",
+                            headers={"apikey": evo_key, "Content-Type": "application/json"},
+                            json={
+                                "webhook": {
+                                    "url": settings.webhook_url,
+                                    "enabled": True,
+                                    "headers": {"apikey": settings.webhook_secret},
+                                    "events": ["MESSAGES_UPSERT"],
+                                }
+                            },
+                            timeout=10,
+                        )
+                        r.raise_for_status()
+                        webhook_ok = True
+                    except Exception as e:
+                        st.warning(f"Instância criada, mas erro ao configurar webhook: {e}")
+                else:
+                    st.warning("WEBHOOK_URL ou WEBHOOK_SECRET não definidos. Configure o webhook manualmente.")
+
+                # 3. Salvar no banco
+                with get_db() as db:
+                    try:
+                        criar_instancia_evolution(db, empresa_id, nome_inst, tel_inst)
+                    except Exception as e:
+                        st.error(f"Erro ao salvar no banco: {e}")
+
+                if webhook_ok:
+                    st.success(f"Instância '{nome_inst}' criada com webhook configurado!")
+                else:
+                    st.success(f"Instância '{nome_inst}' criada! Use o botão Webhook para configurar.")
+
+                # 4. Mostrar QR Code para conexão
+                qr = evo_data.get("qrcode", {})
+                qr_base64 = qr.get("base64", "") if isinstance(qr, dict) else ""
+                if qr_base64:
+                    if "," in qr_base64:
+                        qr_base64 = qr_base64.split(",", 1)[1]
+                    img_bytes = base64.b64decode(qr_base64)
+                    st.image(img_bytes, caption="Escaneie com WhatsApp para conectar", width=300)
+                else:
+                    st.info("Use o botão 'QR Code' na instância para conectar.")
 
 
 # =============================================================================
