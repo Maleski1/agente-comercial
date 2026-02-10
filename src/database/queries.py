@@ -93,6 +93,21 @@ def atualizar_instancia(
     return instancia
 
 
+def desativar_instancia(db: Session, instancia_id: int, empresa_id: int) -> InstanciaEvolution | None:
+    """Desativa uma instancia Evolution (soft delete)."""
+    instancia = (
+        db.query(InstanciaEvolution)
+        .filter(InstanciaEvolution.id == instancia_id, InstanciaEvolution.empresa_id == empresa_id)
+        .first()
+    )
+    if not instancia:
+        return None
+    instancia.ativa = False
+    db.commit()
+    db.refresh(instancia)
+    return instancia
+
+
 # === Queries de Vendedor ===
 
 

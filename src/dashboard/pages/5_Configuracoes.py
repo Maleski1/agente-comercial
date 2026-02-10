@@ -19,6 +19,7 @@ from src.database.queries import (  # noqa: E402
     listar_instancias_empresa,
     criar_instancia_evolution,
     atualizar_instancia,
+    desativar_instancia,
 )
 from src.analysis.prompts import SYSTEM_PROMPT  # noqa: E402
 from src.config import settings  # noqa: E402
@@ -226,15 +227,38 @@ with tab_instancias:
                 novo_tel_inst = st.text_input(
                     "Telefone", value=inst['telefone'] or "", key=f"edit_tel_{inst['id']}"
                 )
-                if st.button("Salvar alterações", key=f"save_{inst['id']}"):
-                    with get_db() as db:
-                        atualizar_instancia(
-                            db, inst['id'], empresa_id,
-                            novo_nome_inst.strip() or None,
-                            novo_tel_inst.strip() or None,
-                        )
-                    st.success("Instância atualizada!")
-                    st.rerun()
+                col_save, col_rm = st.columns(2)
+                with col_save:
+                    if st.button("Salvar alterações", key=f"save_{inst['id']}"):
+                        with get_db() as db:
+                            atualizar_instancia(
+                                db, inst['id'], empresa_id,
+                                novo_nome_inst.strip() or None,
+                                novo_tel_inst.strip() or None,
+                            )
+                        st.success("Instância atualizada!")
+                        st.rerun()
+                with col_rm:
+                    if st.button("Remover instância", key=f"rm_{inst['id']}"):
+                        # 1. Deletar no Evolution API
+                        if evo_url and evo_key:
+                            try:
+                                r = httpx.delete(
+                                    f"{evo_url}/instance/delete/{inst['nome']}",
+                                    headers={"apikey": evo_key},
+                                    timeout=10,
+                                )
+                                r.raise_for_status()
+                            except httpx.HTTPStatusError as e:
+                                if e.response.status_code != 404:
+                                    st.warning(f"Aviso: erro ao remover do Evolution ({e.response.status_code})")
+                            except Exception:
+                                st.warning("Aviso: não foi possível remover do Evolution.")
+                        # 2. Desativar no banco
+                        with get_db() as db:
+                            desativar_instancia(db, inst['id'], empresa_id)
+                        st.success(f"Instância '{inst['nome']}' removida!")
+                        st.rerun()
 
     st.divider()
     st.subheader("Adicionar Instância")
