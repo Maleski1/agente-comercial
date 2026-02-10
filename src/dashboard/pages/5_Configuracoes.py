@@ -251,7 +251,8 @@ with tab_instancias:
         elif not evo_url or not evo_key:
             st.error("Configure a Evolution API primeiro (aba Evolution API).")
         else:
-            # 1. Criar instância na Evolution API
+            # 1. Criar instância na Evolution API (ou detectar que já existe)
+            ja_existe = False
             try:
                 r = httpx.post(
                     f"{evo_url}/instance/create",
@@ -266,8 +267,13 @@ with tab_instancias:
                 r.raise_for_status()
                 evo_data = r.json()
             except httpx.HTTPStatusError as e:
-                st.error(f"Erro ao criar instância no Evolution (HTTP {e.response.status_code}): {e.response.text}")
-                evo_data = None
+                if e.response.status_code == 403 and "already in use" in e.response.text:
+                    st.info(f"Instância '{nome_inst}' já existe no Evolution. Registrando e configurando webhook...")
+                    evo_data = {}
+                    ja_existe = True
+                else:
+                    st.error(f"Erro ao criar instância no Evolution (HTTP {e.response.status_code}): {e.response.text}")
+                    evo_data = None
             except Exception as e:
                 st.error(f"Erro ao criar instância no Evolution: {e}")
                 evo_data = None
